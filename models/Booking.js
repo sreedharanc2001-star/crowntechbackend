@@ -35,11 +35,10 @@ const bookingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-bookingSchema.pre("save", function onSave() {
+bookingSchema.pre("save", async function onSave() {
   if (!this.bookingId) {
-    const stamp = Date.now().toString(36).toUpperCase();
-    const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
-    this.bookingId = `CTS-${stamp}-${rand}`;
+    const count = await this.constructor.countDocuments();
+    this.bookingId = `crowntechorder-${count + 1}`;
   }
 });
 
