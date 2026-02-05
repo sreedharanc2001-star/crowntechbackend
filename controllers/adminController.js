@@ -1,0 +1,59 @@
+const Booking = require("../models/Booking");
+
+const getAllBookings = async (_req, res) => {
+  const bookings = await Booking.find().sort({ createdAt: -1 });
+  return res.json(bookings);
+};
+
+const updateStatus = async (req, res) => {
+  const { status, approval } = req.body;
+  const allowedStatus = ["pending", "in-progress", "completed"];
+  const allowedApproval = ["pending", "approved", "rejected"];
+
+  if (status && !allowedStatus.includes(status)) {
+    return res.status(400).json({ message: "Invalid status value" });
+  }
+  if (approval && !allowedApproval.includes(approval)) {
+    return res.status(400).json({ message: "Invalid approval value" });
+  }
+
+  const update = {};
+  if (status) {
+    update.status = status;
+    if (status === "completed") {
+      update.completionMessage =
+        "Your repair service is completed. Please collect your device.";
+    }
+  }
+  if (approval) {
+    update.approval = approval;
+  }
+
+  const booking = await Booking.findByIdAndUpdate(req.params.id, update, {
+    new: true,
+  });
+
+  if (!booking) {
+    return res.status(404).json({ message: "Booking not found" });
+  }
+  return res.json(booking);
+};
+
+const updateComment = async (req, res) => {
+  const { comment } = req.body;
+  if (typeof comment !== "string") {
+    return res.status(400).json({ message: "Comment is required" });
+  }
+
+  const booking = await Booking.findByIdAndUpdate(
+    req.params.id,
+    { comment },
+    { new: true }
+  );
+  if (!booking) {
+    return res.status(404).json({ message: "Booking not found" });
+  }
+  return res.json(booking);
+};
+
+module.exports = { getAllBookings, updateStatus, updateComment };
