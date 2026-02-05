@@ -1,6 +1,5 @@
 const express = require("express");
 const { authMiddleware, roleMiddleware } = require("../middleware/auth");
-const upload = require("../middleware/upload");
 const {
   createBooking,
   trackBookings,
@@ -17,7 +16,6 @@ router.post(
   "/book",
   authMiddleware,
   roleMiddleware(["user"]),
-  upload.array("images", 5),
   createBooking
 );
 

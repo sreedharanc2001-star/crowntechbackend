@@ -49,12 +49,6 @@ const createBooking = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const images = (req.files || []).map((file) => ({
-      url: `/uploads/${file.filename}`,
-      publicId: file.filename,
-      originalName: file.originalname,
-    }));
-
     const booking = await Booking.create({
       userId: req.user.id,
       userName: user.name || "User",
@@ -65,7 +59,6 @@ const createBooking = async (req, res) => {
       issue: normalizedIssue,
       preferredDate: normalizedDate,
       timeSlot: normalizedSlot,
-      images,
       status: "PENDING",
     });
 

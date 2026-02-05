@@ -12,13 +12,6 @@ const bookingSchema = new mongoose.Schema(
     issue: { type: String, required: true, trim: true },
     preferredDate: { type: String, required: true, trim: true },
     timeSlot: { type: String, required: true, trim: true },
-    images: [
-      {
-        url: { type: String },
-        publicId: { type: String },
-        originalName: { type: String },
-      },
-    ],
     status: {
       type: String,
       enum: [
