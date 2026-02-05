@@ -17,16 +17,23 @@ const startServer = async () => {
     const name = process.env.ADMIN_NAME || "Admin";
 
     if (email && password) {
-      const existingAdmin = await User.findOne({ email: email.toLowerCase() });
+      const hashed = await bcrypt.hash(password, 10);
+      const adminEmail = email.toLowerCase();
+      const existingAdmin = await User.findOne({ email: adminEmail });
       if (!existingAdmin) {
-        const hashed = await bcrypt.hash(password, 10);
         await User.create({
           name,
-          email: email.toLowerCase(),
+          email: adminEmail,
           password: hashed,
           role: "admin",
         });
         console.log("Default admin created");
+      } else {
+        await User.updateOne(
+          { email: adminEmail },
+          { $set: { name, password: hashed, role: "admin" } }
+        );
+        console.log("Default admin updated");
       }
     }
 
