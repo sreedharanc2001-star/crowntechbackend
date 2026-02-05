@@ -1,8 +1,8 @@
-const Booking = require("../models/Booking");
+﻿const Booking = require("../models/Booking");
 const User = require("../models/User");
 
 const SERVICE_TYPES = ["Mobile Repair", "Laptop Repair"];
-const TIME_SLOTS = ["Morning (9–12)", "Afternoon (12–4)", "Evening (4–8)"];
+const TIME_SLOTS = ["Morning (9-12)", "Afternoon (12-4)", "Evening (4-8)"];
 
 const normalizeStatus = (status) => {
   if (!status) return "PENDING";
@@ -145,3 +145,4 @@ module.exports = {
   updateBookingStatus,
   updateBookingComment,
 };
+
