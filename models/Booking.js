@@ -35,13 +35,12 @@ const bookingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-bookingSchema.pre("save", function onSave(next) {
+bookingSchema.pre("save", function onSave() {
   if (!this.bookingId) {
     const stamp = Date.now().toString(36).toUpperCase();
     const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
     this.bookingId = `CTS-${stamp}-${rand}`;
   }
-  next();
 });
 
 module.exports = mongoose.model("Booking", bookingSchema);
