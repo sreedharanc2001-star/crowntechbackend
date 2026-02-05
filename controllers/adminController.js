@@ -6,27 +6,22 @@ const getAllBookings = async (_req, res) => {
 };
 
 const updateStatus = async (req, res) => {
-  const { status, approval } = req.body;
-  const allowedStatus = ["pending", "in-progress", "completed"];
-  const allowedApproval = ["pending", "approved", "rejected"];
+  const { status } = req.body;
+  if (!status) {
+    return res.status(400).json({ message: "Status is required" });
+  }
 
-  if (status && !allowedStatus.includes(status)) {
+  const normalized = status.toUpperCase().replace(" ", "_");
+  const allowedStatus = ["PENDING", "APPROVED", "IN_PROGRESS", "COMPLETED", "REJECTED"];
+
+  if (!allowedStatus.includes(normalized)) {
     return res.status(400).json({ message: "Invalid status value" });
   }
-  if (approval && !allowedApproval.includes(approval)) {
-    return res.status(400).json({ message: "Invalid approval value" });
-  }
 
-  const update = {};
-  if (status) {
-    update.status = status;
-    if (status === "completed") {
-      update.completionMessage =
-        "Your repair service is completed. Please collect your device.";
-    }
-  }
-  if (approval) {
-    update.approval = approval;
+  const update = { status: normalized };
+  if (normalized === "COMPLETED") {
+    update.completionMessage =
+      "Your repair service is completed. Please collect your device.";
   }
 
   const booking = await Booking.findByIdAndUpdate(req.params.id, update, {
@@ -47,7 +42,7 @@ const updateComment = async (req, res) => {
 
   const booking = await Booking.findByIdAndUpdate(
     req.params.id,
-    { comment },
+    { adminComments: comment, comment },
     { new: true }
   );
   if (!booking) {
