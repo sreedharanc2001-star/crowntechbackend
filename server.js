@@ -7,26 +7,37 @@ const User = require("./models/User");
 
 const app = express();
 
-// Connect Database
-connectDB().then(async () => {
-  const email = process.env.ADMIN_EMAIL;
-  const password = process.env.ADMIN_PASSWORD;
-  const name = process.env.ADMIN_NAME || "Admin";
+const startServer = async () => {
+  try {
+    // Connect Database
+    await connectDB();
 
-  if (email && password) {
-    const existingAdmin = await User.findOne({ email: email.toLowerCase() });
-    if (!existingAdmin) {
-      const hashed = await bcrypt.hash(password, 10);
-      await User.create({
-        name,
-        email: email.toLowerCase(),
-        password: hashed,
-        role: "admin",
-      });
-      console.log("Default admin created");
+    const email = process.env.ADMIN_EMAIL;
+    const password = process.env.ADMIN_PASSWORD;
+    const name = process.env.ADMIN_NAME || "Admin";
+
+    if (email && password) {
+      const existingAdmin = await User.findOne({ email: email.toLowerCase() });
+      if (!existingAdmin) {
+        const hashed = await bcrypt.hash(password, 10);
+        await User.create({
+          name,
+          email: email.toLowerCase(),
+          password: hashed,
+          role: "admin",
+        });
+        console.log("Default admin created");
+      }
     }
+
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error("Failed to start server:", err);
+    process.exit(1);
   }
-});
+};
 
 // Middleware
 app.use(cors());
@@ -44,6 +55,5 @@ app.get("/", (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+
+startServer();
