@@ -19,21 +19,31 @@ const startServer = async () => {
     if (email && password) {
       const hashed = await bcrypt.hash(password, 10);
       const adminEmail = email.toLowerCase();
-      const existingAdmin = await User.findOne({ email: adminEmail });
-      if (!existingAdmin) {
-        await User.create({
-          name,
-          email: adminEmail,
-          password: hashed,
-          role: "admin",
-        });
-        console.log("Default admin created");
-      } else {
+      const existingAdminByEmail = await User.findOne({ email: adminEmail });
+
+      if (existingAdminByEmail) {
         await User.updateOne(
           { email: adminEmail },
           { $set: { name, password: hashed, role: "admin" } }
         );
         console.log("Default admin updated");
+      } else {
+        const existingAdminByRole = await User.findOne({ role: "admin" });
+        if (existingAdminByRole) {
+          await User.updateOne(
+            { _id: existingAdminByRole._id },
+            { $set: { name, email: adminEmail, password: hashed, role: "admin" } }
+          );
+          console.log("Default admin updated (role match)");
+        } else {
+          await User.create({
+            name,
+            email: adminEmail,
+            password: hashed,
+            role: "admin",
+          });
+          console.log("Default admin created");
+        }
       }
     }
 
