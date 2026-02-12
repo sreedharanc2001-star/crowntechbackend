@@ -1,5 +1,6 @@
-const Booking = require("../models/Booking");
+﻿const Booking = require("../models/Booking");
 const User = require("../models/User");
+const { categorizeIssue } = require("../services/aiCategorizer");
 
 const getUserBookings = async (req, res) => {
   const bookings = await Booking.find({ userId: req.user.id }).sort({
@@ -33,6 +34,7 @@ const createBooking = async (req, res) => {
   if (!user) {
     return res.status(404).json({ message: "User not found" });
   }
+  const aiResult = await categorizeIssue(normalizedIssue);
 
   const booking = await Booking.create({
     userId: req.user.id,
@@ -42,6 +44,10 @@ const createBooking = async (req, res) => {
     serviceType: normalizedService,
     deviceModel: normalizedDevice,
     issue: normalizedIssue,
+    issueCategory: aiResult.category,
+    aiConfidence: aiResult.confidence,
+    aiSource: aiResult.source,
+    aiNotes: aiResult.notes || "",
     preferredDate: normalizedDate || "N/A",
     timeSlot: normalizedSlot || "N/A",
     status: "PENDING",
@@ -50,3 +56,5 @@ const createBooking = async (req, res) => {
 };
 
 module.exports = { getUserBookings, createBooking };
+
+

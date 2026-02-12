@@ -10,6 +10,10 @@ const bookingSchema = new mongoose.Schema(
     serviceType: { type: String, required: true, trim: true },
     deviceModel: { type: String, required: true, trim: true },
     issue: { type: String, required: true, trim: true },
+    issueCategory: { type: String, trim: true, default: "" },
+    aiConfidence: { type: Number, default: null },
+    aiSource: { type: String, trim: true, default: "" },
+    aiNotes: { type: String, trim: true, default: "" },
     preferredDate: { type: String, required: true, trim: true },
     timeSlot: { type: String, required: true, trim: true },
     status: {
