@@ -27,6 +27,7 @@ const createBooking = async (req, res) => {
     const normalizedIssue = (issue || description || "").trim();
     const normalizedDate = (preferredDate || "").trim();
     const normalizedSlot = (timeSlot || "").trim();
+    const fallbackPhone = (req.body.userPhone || "").trim();
 
     if (
       !normalizedService ||
@@ -49,13 +50,16 @@ const createBooking = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
+    if (!user.email) {
+      return res.status(400).json({ message: "User email is missing. Please contact support." });
+    }
     const aiResult = await categorizeIssue(normalizedIssue);
 
     const booking = await Booking.create({
       userId: req.user.id,
       userName: user.name || "User",
       userEmail: user.email,
-      userPhone: user.phone || "",
+      userPhone: (user.phone || fallbackPhone || "").trim(),
       serviceType: normalizedService,
       deviceModel: normalizedDevice,
       issue: normalizedIssue,
@@ -74,6 +78,10 @@ const createBooking = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
+    if (err.name === "ValidationError") {
+      const firstMessage = Object.values(err.errors || {})[0]?.message;
+      return res.status(400).json({ message: firstMessage || "Invalid booking payload." });
+    }
     return res.status(500).json({ message: "Service booking failed." });
   }
 };

@@ -6,7 +6,7 @@ const bookingSchema = new mongoose.Schema(
     bookingId: { type: String, unique: true, index: true },
     userName: { type: String, required: true, trim: true },
     userEmail: { type: String, required: true, trim: true, lowercase: true },
-    userPhone: { type: String, required: true, trim: true },
+    userPhone: { type: String, trim: true, default: "" },
     serviceType: { type: String, required: true, trim: true },
     deviceModel: { type: String, required: true, trim: true },
     issue: { type: String, required: true, trim: true },
