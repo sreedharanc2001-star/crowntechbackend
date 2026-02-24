@@ -41,8 +41,9 @@ const bookingSchema = new mongoose.Schema(
 
 bookingSchema.pre("save", async function onSave() {
   if (!this.bookingId) {
-    const count = await this.constructor.countDocuments();
-    this.bookingId = `crowntechorder-${count + 1}`;
+    const ts = Date.now().toString(36).toUpperCase();
+    const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
+    this.bookingId = `CROWNTECHORDER-${ts}-${rand}`;
   }
 });
 

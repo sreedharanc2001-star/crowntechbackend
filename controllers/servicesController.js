@@ -82,6 +82,9 @@ const createBooking = async (req, res) => {
       const firstMessage = Object.values(err.errors || {})[0]?.message;
       return res.status(400).json({ message: firstMessage || "Invalid booking payload." });
     }
+    if (err.code === 11000) {
+      return res.status(409).json({ message: "Booking conflict detected. Please submit again." });
+    }
     return res.status(500).json({ message: "Service booking failed." });
   }
 };
