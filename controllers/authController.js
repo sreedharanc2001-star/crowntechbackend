@@ -16,24 +16,39 @@ const signToken = (user) => {
 const register = async (req, res) => {
   try {
     const { name, email, password, phone } = req.body;
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: "Name, email and password are required" });
+    if (!name || !email || !password || !phone) {
+      return res.status(400).json({ message: "Name, email, phone and password are required" });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedPassword = password.trim();
+    const normalizedPhone = phone.trim();
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const phoneRegex = /^[6-9]\d{9}$/;
     if (!emailRegex.test(normalizedEmail)) {
       return res.status(400).json({ message: "Invalid email format" });
+    }
+    if (!phoneRegex.test(normalizedPhone)) {
+      return res.status(400).json({ message: "Enter valid 10-digit Indian phone number" });
     }
     if (normalizedPassword.length < 6) {
       return res.status(400).json({ message: "Password must be 6+ characters" });
     }
 
-    const existing = await User.findOne({ email: normalizedEmail });
-    if (existing) {
+    const [existingByEmail, existingByPhone] = await Promise.all([
+      User.findOne({ email: normalizedEmail }),
+      User.findOne({ phone: normalizedPhone }),
+    ]);
+
+    if (existingByEmail && existingByPhone) {
+      return res.status(409).json({ message: "Email and phone number already exist" });
+    }
+    if (existingByEmail) {
       return res.status(409).json({ message: "Email already registered" });
+    }
+    if (existingByPhone) {
+      return res.status(409).json({ message: "Phone number already registered" });
     }
 
     const hashed = await bcrypt.hash(normalizedPassword, 10);
@@ -41,7 +56,7 @@ const register = async (req, res) => {
       name,
       email: normalizedEmail,
       password: hashed,
-      phone,
+      phone: normalizedPhone,
       role: "user",
     });
 
@@ -53,7 +68,13 @@ const register = async (req, res) => {
     });
   } catch (err) {
     if (err.code === 11000) {
-      return res.status(409).json({ message: "Email already registered" });
+      if (err.keyPattern?.email) {
+        return res.status(409).json({ message: "Email already registered" });
+      }
+      if (err.keyPattern?.phone) {
+        return res.status(409).json({ message: "Phone number already registered" });
+      }
+      return res.status(409).json({ message: "Email or phone already registered" });
     }
     if (err.message === "JWT_SECRET is not set") {
       return res.status(500).json({ message: "Server misconfigured: JWT secret missing" });
