@@ -4,11 +4,26 @@ const { categorizeIssue } = require("../services/aiCategorizer");
 
 const SERVICE_TYPES = ["Mobile Repair", "Laptop Repair"];
 const TIME_SLOTS = ["Morning (9-12)", "Afternoon (12-4)", "Evening (4-8)"];
+const AI_TIMEOUT_MS = 2500;
 
 const normalizeStatus = (status) => {
   if (!status) return "PENDING";
   const upper = status.toUpperCase();
   return upper.replace(" ", "_");
+};
+
+const withTimeout = async (promise, ms, fallbackValue) => {
+  let timeoutId;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((resolve) => {
+        timeoutId = setTimeout(() => resolve(fallbackValue), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
 
 const createBooking = async (req, res) => {
@@ -53,7 +68,16 @@ const createBooking = async (req, res) => {
     if (!user.email) {
       return res.status(400).json({ message: "User email is missing. Please contact support." });
     }
-    const aiResult = await categorizeIssue(normalizedIssue);
+    const aiResult = await withTimeout(
+      categorizeIssue(normalizedIssue),
+      AI_TIMEOUT_MS,
+      {
+        category: "general",
+        confidence: null,
+        source: "fallback",
+        notes: "AI categorization timed out; used fallback.",
+      }
+    );
 
     const booking = await Booking.create({
       userId: req.user.id,
