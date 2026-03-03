@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const { getFirebaseAdmin } = require("../config/firebaseAdmin");
 
 const signToken = (user) => {
   if (!process.env.JWT_SECRET) {
@@ -117,4 +118,61 @@ const login = async (req, res) => {
   }
 };
 
-module.exports = { register, login };
+const normalizeFirebasePhone = (phoneNumber) => {
+  const digits = String(phoneNumber || "").replace(/\D/g, "");
+  if (digits.length < 10) {
+    return "";
+  }
+  return digits.slice(-10);
+};
+
+const firebaseLogin = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ message: "Firebase token is required" });
+    }
+
+    const admin = getFirebaseAdmin();
+    const decoded = await admin.auth().verifyIdToken(token);
+    const normalizedPhone = normalizeFirebasePhone(decoded.phone_number);
+
+    if (!/^[6-9]\d{9}$/.test(normalizedPhone)) {
+      return res.status(400).json({ message: "Invalid Firebase phone number" });
+    }
+
+    let user = await User.findOne({ phone: normalizedPhone });
+    if (!user) {
+      const syntheticEmail = `firebase_${decoded.uid}@phone.local`;
+      user = await User.findOne({ email: syntheticEmail });
+
+      if (!user) {
+        const hashedPassword = await bcrypt.hash(`${decoded.uid}-${Date.now()}`, 10);
+        user = await User.create({
+          name: decoded.name || `User ${normalizedPhone.slice(-4)}`,
+          email: syntheticEmail,
+          password: hashedPassword,
+          phone: normalizedPhone,
+          role: "user",
+        });
+      } else {
+        user.phone = normalizedPhone;
+        await user.save();
+      }
+    }
+
+    const appToken = signToken(user);
+    return res.json({
+      message: "Login successful",
+      token: appToken,
+      user,
+    });
+  } catch (err) {
+    if (err.message === "Firebase Admin not configured") {
+      return res.status(500).json({ message: "Server misconfigured: Firebase Admin missing" });
+    }
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+};
+
+module.exports = { register, login, firebaseLogin };

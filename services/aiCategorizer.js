@@ -1,6 +1,7 @@
 const OpenAI = require("openai");
 
 const DEFAULT_CATEGORY = "general";
+const CACHE_TTL_MS = 5 * 60 * 1000;
 const CATEGORY_KEYWORDS = [
   { category: "screen", keywords: ["screen", "display", "crack", "cracked", "touch"] },
   { category: "battery", keywords: ["battery", "charging", "charge", "power"] },
@@ -11,6 +12,22 @@ const CATEGORY_KEYWORDS = [
   { category: "network", keywords: ["wifi", "network", "signal", "sim"] },
   { category: "ports", keywords: ["port", "charging port", "usb", "jack"] },
 ];
+const CATEGORY_SET = new Set([
+  "screen",
+  "battery",
+  "software",
+  "water",
+  "speaker",
+  "camera",
+  "network",
+  "ports",
+  "general",
+]);
+const resultCache = new Map();
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const openaiClient = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
 
 const findKeywordCategory = (text) => {
   const lower = text.toLowerCase();
@@ -26,38 +43,22 @@ const buildPrompt = (issueText) => [
   {
     role: "system",
     content:
-      "You are an assistant that classifies device repair issues into a single category. " +
-      "Return JSON only with keys: category, confidence, notes. " +
-      "Allowed categories: screen, battery, software, water, speaker, camera, network, ports, general.",
+      "Classify device repair issue into exactly one label: " +
+      "screen, battery, software, water, speaker, camera, network, ports, general. " +
+      "Return only the label text with no JSON and no extra words.",
   },
   {
     role: "user",
     content: `Issue description: ${issueText}`,
   },
 ];
-
-const parseJson = (text) => {
-  try {
-    return JSON.parse(text);
-  } catch (_err) {
-    return null;
+const normalizeModelCategory = (text) => {
+  const raw = String(text || "").toLowerCase().trim();
+  if (CATEGORY_SET.has(raw)) {
+    return raw;
   }
-};
-
-const normalizeResult = (payload) => {
-  if (!payload || typeof payload !== "object") {
-    return null;
-  }
-  const category = String(payload.category || "").toLowerCase().trim();
-  const confidence = Number(payload.confidence);
-  if (!category) {
-    return null;
-  }
-  return {
-    category,
-    confidence: Number.isFinite(confidence) ? confidence : null,
-    notes: typeof payload.notes === "string" ? payload.notes.trim() : "",
-  };
+  const token = raw.split(/[\s,.:;!?()[\]{}"'`|/-]+/).find((part) => CATEGORY_SET.has(part));
+  return token || "";
 };
 
 const categorizeIssue = async (issueText) => {
@@ -71,7 +72,7 @@ const categorizeIssue = async (issueText) => {
     };
   }
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!openaiClient) {
     return {
       category: findKeywordCategory(normalized),
       confidence: null,
@@ -80,35 +81,40 @@ const categorizeIssue = async (issueText) => {
     };
   }
 
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+  const cacheKey = normalized.toLowerCase();
+  const cached = resultCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
 
   try {
-    const response = await client.responses.create({
-      model,
+    const response = await openaiClient.responses.create({
+      model: OPENAI_MODEL,
       input: buildPrompt(normalized),
       temperature: 0,
-      max_output_tokens: 100,
+      max_output_tokens: 20,
     });
 
     const text = response.output_text || "";
-    const parsed = normalizeResult(parseJson(text));
-    if (!parsed) {
-      return {
-        category: findKeywordCategory(normalized),
-        confidence: null,
-        notes: "Unable to parse model response; used keyword fallback.",
-        source: "fallback",
-      };
-    }
+    const category = normalizeModelCategory(text);
+    const value = category
+      ? {
+          category,
+          confidence: null,
+          notes: "",
+          source: "openai",
+        }
+      : {
+          category: findKeywordCategory(normalized),
+          confidence: null,
+          notes: "Unable to parse model response; used keyword fallback.",
+          source: "fallback",
+        };
+    resultCache.set(cacheKey, { value, expiresAt: Date.now() + CACHE_TTL_MS });
 
-    return {
-      category: parsed.category,
-      confidence: parsed.confidence,
-      notes: parsed.notes,
-      source: "openai",
-    };
-  } catch (_err) {
+    return value;
+  } catch (err) {
+    console.error("OpenAI classify failed:", err?.message || err);
     return {
       category: findKeywordCategory(normalized),
       confidence: null,
@@ -118,4 +124,4 @@ const categorizeIssue = async (issueText) => {
   }
 };
 
-module.exports = { categorizeIssue };
+module.exports = { categorizeIssue, findKeywordCategory };

@@ -1,10 +1,10 @@
 ﻿const Booking = require("../models/Booking");
 const User = require("../models/User");
-const { categorizeIssue } = require("../services/aiCategorizer");
+const { categorizeIssue, findKeywordCategory } = require("../services/aiCategorizer");
 
 const SERVICE_TYPES = ["Mobile Repair", "Laptop Repair"];
 const TIME_SLOTS = ["Morning (9-12)", "Afternoon (12-4)", "Evening (4-8)"];
-const AI_TIMEOUT_MS = 2500;
+const AI_TIMEOUT_MS = 8000;
 
 const normalizeStatus = (status) => {
   if (!status) return "PENDING";
@@ -24,6 +24,32 @@ const withTimeout = async (promise, ms, fallbackValue) => {
   } finally {
     clearTimeout(timeoutId);
   }
+};
+
+const classifyBookingInBackground = (bookingId, issueText) => {
+  setImmediate(async () => {
+    const aiResult = await withTimeout(
+      categorizeIssue(issueText),
+      AI_TIMEOUT_MS,
+      {
+        category: findKeywordCategory(issueText),
+        confidence: null,
+        source: "fallback",
+        notes: "AI categorization timed out; kept keyword category.",
+      }
+    );
+
+    try {
+      await Booking.findByIdAndUpdate(bookingId, {
+        issueCategory: aiResult.category,
+        aiConfidence: aiResult.confidence,
+        aiSource: aiResult.source,
+        aiNotes: aiResult.notes || "",
+      });
+    } catch (err) {
+      console.error("Failed to update AI category:", err?.message || err);
+    }
+  });
 };
 
 const createBooking = async (req, res) => {
@@ -68,16 +94,7 @@ const createBooking = async (req, res) => {
     if (!user.email) {
       return res.status(400).json({ message: "User email is missing. Please contact support." });
     }
-    const aiResult = await withTimeout(
-      categorizeIssue(normalizedIssue),
-      AI_TIMEOUT_MS,
-      {
-        category: "general",
-        confidence: null,
-        source: "fallback",
-        notes: "AI categorization timed out; used fallback.",
-      }
-    );
+    const keywordCategory = findKeywordCategory(normalizedIssue);
 
     const booking = await Booking.create({
       userId: req.user.id,
@@ -87,14 +104,16 @@ const createBooking = async (req, res) => {
       serviceType: normalizedService,
       deviceModel: normalizedDevice,
       issue: normalizedIssue,
-      issueCategory: aiResult.category,
-      aiConfidence: aiResult.confidence,
-      aiSource: aiResult.source,
-      aiNotes: aiResult.notes || "",
+      issueCategory: keywordCategory,
+      aiConfidence: null,
+      aiSource: "pending",
+      aiNotes: "AI categorization queued.",
       preferredDate: normalizedDate,
       timeSlot: normalizedSlot,
       status: "PENDING",
     });
+
+    classifyBookingInBackground(booking._id, normalizedIssue);
 
     return res.json({
       message: "Service booked successfully.",

@@ -1,6 +1,48 @@
-﻿const Booking = require("../models/Booking");
+const Booking = require("../models/Booking");
 const User = require("../models/User");
-const { categorizeIssue } = require("../services/aiCategorizer");
+const { categorizeIssue, findKeywordCategory } = require("../services/aiCategorizer");
+
+const AI_TIMEOUT_MS = 8000;
+
+const withTimeout = async (promise, ms, fallbackValue) => {
+  let timeoutId;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((resolve) => {
+        timeoutId = setTimeout(() => resolve(fallbackValue), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const classifyBookingInBackground = (bookingId, issueText) => {
+  setImmediate(async () => {
+    const aiResult = await withTimeout(
+      categorizeIssue(issueText),
+      AI_TIMEOUT_MS,
+      {
+        category: findKeywordCategory(issueText),
+        confidence: null,
+        source: "fallback",
+        notes: "AI categorization timed out; kept keyword category.",
+      }
+    );
+
+    try {
+      await Booking.findByIdAndUpdate(bookingId, {
+        issueCategory: aiResult.category,
+        aiConfidence: aiResult.confidence,
+        aiSource: aiResult.source,
+        aiNotes: aiResult.notes || "",
+      });
+    } catch (err) {
+      console.error("Failed to update AI category:", err?.message || err);
+    }
+  });
+};
 
 const getUserBookings = async (req, res) => {
   const bookings = await Booking.find({ userId: req.user.id }).sort({
@@ -34,7 +76,8 @@ const createBooking = async (req, res) => {
   if (!user) {
     return res.status(404).json({ message: "User not found" });
   }
-  const aiResult = await categorizeIssue(normalizedIssue);
+
+  const keywordCategory = findKeywordCategory(normalizedIssue);
 
   const booking = await Booking.create({
     userId: req.user.id,
@@ -44,17 +87,18 @@ const createBooking = async (req, res) => {
     serviceType: normalizedService,
     deviceModel: normalizedDevice,
     issue: normalizedIssue,
-    issueCategory: aiResult.category,
-    aiConfidence: aiResult.confidence,
-    aiSource: aiResult.source,
-    aiNotes: aiResult.notes || "",
+    issueCategory: keywordCategory,
+    aiConfidence: null,
+    aiSource: "pending",
+    aiNotes: "AI categorization queued.",
     preferredDate: normalizedDate || "N/A",
     timeSlot: normalizedSlot || "N/A",
     status: "PENDING",
   });
+
+  classifyBookingInBackground(booking._id, normalizedIssue);
+
   return res.json({ message: "Booking created successfully", booking });
 };
 
 module.exports = { getUserBookings, createBooking };
-
-
