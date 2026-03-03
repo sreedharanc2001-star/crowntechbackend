@@ -128,35 +128,56 @@ const normalizeFirebasePhone = (phoneNumber) => {
 
 const firebaseLogin = async (req, res) => {
   try {
-    const { token } = req.body;
+    const { token, phone, name } = req.body;
     if (!token) {
       return res.status(400).json({ message: "Firebase token is required" });
     }
 
     const admin = getFirebaseAdmin();
     const decoded = await admin.auth().verifyIdToken(token);
+    const normalizedEmail = String(decoded.email || "").trim().toLowerCase();
+    const emailVerified = Boolean(decoded.email_verified);
     const normalizedPhone = normalizeFirebasePhone(decoded.phone_number);
+    const bodyPhone = String(phone || "").replace(/\D/g, "").slice(-10);
+    const resolvedPhone = normalizedPhone || bodyPhone;
 
-    if (!/^[6-9]\d{9}$/.test(normalizedPhone)) {
-      return res.status(400).json({ message: "Invalid Firebase phone number" });
+    if (normalizedEmail && !emailVerified) {
+      return res.status(403).json({ message: "Please verify your email before login." });
     }
 
-    let user = await User.findOne({ phone: normalizedPhone });
-    if (!user) {
-      const syntheticEmail = `firebase_${decoded.uid}@phone.local`;
-      user = await User.findOne({ email: syntheticEmail });
+    if (!normalizedEmail && !resolvedPhone) {
+      return res.status(400).json({ message: "Invalid Firebase identity token" });
+    }
 
-      if (!user) {
-        const hashedPassword = await bcrypt.hash(`${decoded.uid}-${Date.now()}`, 10);
-        user = await User.create({
-          name: decoded.name || `User ${normalizedPhone.slice(-4)}`,
-          email: syntheticEmail,
-          password: hashedPassword,
-          phone: normalizedPhone,
-          role: "user",
-        });
-      } else {
-        user.phone = normalizedPhone;
+    let user = null;
+    if (normalizedEmail) {
+      user = await User.findOne({ email: normalizedEmail });
+    }
+    if (!user && resolvedPhone && /^[6-9]\d{9}$/.test(resolvedPhone)) {
+      user = await User.findOne({ phone: resolvedPhone });
+    }
+
+    if (!user) {
+      const syntheticEmail = normalizedEmail || `firebase_${decoded.uid}@phone.local`;
+      const hashedPassword = await bcrypt.hash(`${decoded.uid}-${Date.now()}`, 10);
+      user = await User.create({
+        name: decoded.name || name || (resolvedPhone ? `User ${resolvedPhone.slice(-4)}` : "User"),
+        email: syntheticEmail,
+        password: hashedPassword,
+        phone: /^[6-9]\d{9}$/.test(resolvedPhone) ? resolvedPhone : "",
+        role: "user",
+      });
+    } else {
+      let needsSave = false;
+      if (!user.phone && /^[6-9]\d{9}$/.test(resolvedPhone)) {
+        user.phone = resolvedPhone;
+        needsSave = true;
+      }
+      if (!user.name && (decoded.name || name)) {
+        user.name = decoded.name || name;
+        needsSave = true;
+      }
+      if (needsSave) {
         await user.save();
       }
     }
