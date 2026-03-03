@@ -1,5 +1,6 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const twilio = require("twilio");
 const User = require("../models/User");
 const { getFirebaseAdmin } = require("../config/firebaseAdmin");
 
@@ -126,6 +127,27 @@ const normalizeFirebasePhone = (phoneNumber) => {
   return digits.slice(-10);
 };
 
+const normalizeIndianPhone = (phoneNumber) => {
+  const digits = String(phoneNumber || "").replace(/\D/g, "");
+  if (digits.length < 10) {
+    return "";
+  }
+  return digits.slice(-10);
+};
+
+const getTwilioVerifyService = () => {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
+
+  if (!accountSid || !authToken || !verifyServiceSid) {
+    throw new Error("Twilio Verify not configured");
+  }
+
+  const client = twilio(accountSid, authToken);
+  return client.verify.v2.services(verifyServiceSid);
+};
+
 const firebaseLogin = async (req, res) => {
   try {
     const { token, phone, name } = req.body;
@@ -196,4 +218,76 @@ const firebaseLogin = async (req, res) => {
   }
 };
 
-module.exports = { register, login, firebaseLogin };
+const sendTwilioOtp = async (req, res) => {
+  try {
+    const normalizedPhone = normalizeIndianPhone(req.body.phone);
+    if (!/^[6-9]\d{9}$/.test(normalizedPhone)) {
+      return res.status(400).json({ message: "Enter valid 10-digit Indian phone number" });
+    }
+
+    const service = getTwilioVerifyService();
+    await service.verifications.create({
+      to: `+91${normalizedPhone}`,
+      channel: "sms",
+    });
+
+    return res.json({ message: "OTP sent successfully." });
+  } catch (err) {
+    if (err.message === "Twilio Verify not configured") {
+      return res.status(500).json({ message: "Server misconfigured: Twilio Verify missing" });
+    }
+    return res.status(500).json({ message: "Failed to send OTP." });
+  }
+};
+
+const verifyTwilioOtp = async (req, res) => {
+  try {
+    const normalizedPhone = normalizeIndianPhone(req.body.phone);
+    const code = String(req.body.otp || "").trim();
+    const name = String(req.body.name || "").trim();
+
+    if (!/^[6-9]\d{9}$/.test(normalizedPhone)) {
+      return res.status(400).json({ message: "Enter valid 10-digit Indian phone number" });
+    }
+    if (!/^\d{4,8}$/.test(code)) {
+      return res.status(400).json({ message: "Enter valid OTP." });
+    }
+
+    const service = getTwilioVerifyService();
+    const result = await service.verificationChecks.create({
+      to: `+91${normalizedPhone}`,
+      code,
+    });
+
+    if (result.status !== "approved") {
+      return res.status(401).json({ message: "Invalid or expired OTP." });
+    }
+
+    let user = await User.findOne({ phone: normalizedPhone });
+    if (!user) {
+      const syntheticEmail = `twilio_${normalizedPhone}@phone.local`;
+      const hashedPassword = await bcrypt.hash(`twilio-${normalizedPhone}-${Date.now()}`, 10);
+      user = await User.create({
+        name: name || `User ${normalizedPhone.slice(-4)}`,
+        email: syntheticEmail,
+        password: hashedPassword,
+        phone: normalizedPhone,
+        role: "user",
+      });
+    }
+
+    const token = signToken(user);
+    return res.json({
+      message: "Login successful",
+      token,
+      user,
+    });
+  } catch (err) {
+    if (err.message === "Twilio Verify not configured") {
+      return res.status(500).json({ message: "Server misconfigured: Twilio Verify missing" });
+    }
+    return res.status(500).json({ message: "OTP verification failed." });
+  }
+};
+
+module.exports = { register, login, firebaseLogin, sendTwilioOtp, verifyTwilioOtp };

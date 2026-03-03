@@ -21,7 +21,8 @@
         "jsonwebtoken": "^9.0.3",
         "mongodb": "^7.0.0",
         "mongoose": "^9.1.5",
-        "openai": "^6.21.0"
+        "openai": "^6.21.0",
+        "twilio": "^5.12.2"
     },
     "devDependencies": {
         "@mermaid-js/mermaid-cli": "^11.12.0"
