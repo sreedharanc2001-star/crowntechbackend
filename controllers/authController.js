@@ -2,7 +2,6 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const twilio = require("twilio");
 const User = require("../models/User");
-const { getFirebaseAdmin } = require("../config/firebaseAdmin");
 
 const signToken = (user) => {
   if (!process.env.JWT_SECRET) {
@@ -119,14 +118,6 @@ const login = async (req, res) => {
   }
 };
 
-const normalizeFirebasePhone = (phoneNumber) => {
-  const digits = String(phoneNumber || "").replace(/\D/g, "");
-  if (digits.length < 10) {
-    return "";
-  }
-  return digits.slice(-10);
-};
-
 const normalizeIndianPhone = (phoneNumber) => {
   const digits = String(phoneNumber || "").replace(/\D/g, "");
   if (digits.length < 10) {
@@ -146,76 +137,6 @@ const getTwilioVerifyService = () => {
 
   const client = twilio(accountSid, authToken);
   return client.verify.v2.services(verifyServiceSid);
-};
-
-const firebaseLogin = async (req, res) => {
-  try {
-    const { token, phone, name } = req.body;
-    if (!token) {
-      return res.status(400).json({ message: "Firebase token is required" });
-    }
-
-    const admin = getFirebaseAdmin();
-    const decoded = await admin.auth().verifyIdToken(token);
-    const normalizedEmail = String(decoded.email || "").trim().toLowerCase();
-    const emailVerified = Boolean(decoded.email_verified);
-    const normalizedPhone = normalizeFirebasePhone(decoded.phone_number);
-    const bodyPhone = String(phone || "").replace(/\D/g, "").slice(-10);
-    const resolvedPhone = normalizedPhone || bodyPhone;
-
-    if (normalizedEmail && !emailVerified) {
-      return res.status(403).json({ message: "Please verify your email before login." });
-    }
-
-    if (!normalizedEmail && !resolvedPhone) {
-      return res.status(400).json({ message: "Invalid Firebase identity token" });
-    }
-
-    let user = null;
-    if (normalizedEmail) {
-      user = await User.findOne({ email: normalizedEmail });
-    }
-    if (!user && resolvedPhone && /^[6-9]\d{9}$/.test(resolvedPhone)) {
-      user = await User.findOne({ phone: resolvedPhone });
-    }
-
-    if (!user) {
-      const syntheticEmail = normalizedEmail || `firebase_${decoded.uid}@phone.local`;
-      const hashedPassword = await bcrypt.hash(`${decoded.uid}-${Date.now()}`, 10);
-      user = await User.create({
-        name: decoded.name || name || (resolvedPhone ? `User ${resolvedPhone.slice(-4)}` : "User"),
-        email: syntheticEmail,
-        password: hashedPassword,
-        phone: /^[6-9]\d{9}$/.test(resolvedPhone) ? resolvedPhone : "",
-        role: "user",
-      });
-    } else {
-      let needsSave = false;
-      if (!user.phone && /^[6-9]\d{9}$/.test(resolvedPhone)) {
-        user.phone = resolvedPhone;
-        needsSave = true;
-      }
-      if (!user.name && (decoded.name || name)) {
-        user.name = decoded.name || name;
-        needsSave = true;
-      }
-      if (needsSave) {
-        await user.save();
-      }
-    }
-
-    const appToken = signToken(user);
-    return res.json({
-      message: "Login successful",
-      token: appToken,
-      user,
-    });
-  } catch (err) {
-    if (err.message === "Firebase Admin not configured") {
-      return res.status(500).json({ message: "Server misconfigured: Firebase Admin missing" });
-    }
-    return res.status(401).json({ message: "Unauthorized" });
-  }
 };
 
 const sendTwilioOtp = async (req, res) => {
@@ -290,4 +211,4 @@ const verifyTwilioOtp = async (req, res) => {
   }
 };
 
-module.exports = { register, login, firebaseLogin, sendTwilioOtp, verifyTwilioOtp };
+module.exports = { register, login, sendTwilioOtp, verifyTwilioOtp };
