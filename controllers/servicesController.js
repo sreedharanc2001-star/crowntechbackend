@@ -198,12 +198,60 @@ const updateBookingComment = async (req, res) => {
   return res.json(booking);
 };
 
+const submitBookingFeedback = async (req, res) => {
+  try {
+    const { rating, comment } = req.body;
+    const parsedRating = Number(rating);
+    const normalizedComment = String(comment || "").trim();
+
+    if (!Number.isInteger(parsedRating) || parsedRating < 1 || parsedRating > 5) {
+      return res.status(400).json({ message: "Rating must be an integer between 1 and 5." });
+    }
+    if (!normalizedComment) {
+      return res.status(400).json({ message: "Feedback comment is required." });
+    }
+    if (normalizedComment.length > 500) {
+      return res.status(400).json({ message: "Feedback comment must be 500 characters or less." });
+    }
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+    if (String(booking.userId) !== String(req.user.id)) {
+      return res.status(403).json({ message: "You can only submit feedback for your own booking." });
+    }
+
+    const bookingStatus = normalizeStatus(booking.status);
+    if (bookingStatus !== "COMPLETED") {
+      return res.status(400).json({ message: "Feedback can be submitted only for completed services." });
+    }
+    if (booking.feedbackRating !== null || booking.feedbackComment) {
+      return res.status(409).json({ message: "Feedback already submitted for this booking." });
+    }
+
+    booking.feedbackRating = parsedRating;
+    booking.feedbackComment = normalizedComment;
+    booking.feedbackCreatedAt = new Date();
+    await booking.save();
+
+    return res.json({
+      message: "Thank you for your feedback.",
+      booking,
+    });
+  } catch (err) {
+    console.error("submitBookingFeedback failed:", err?.message || err);
+    return res.status(500).json({ message: "Unable to submit feedback right now." });
+  }
+};
+
 module.exports = {
   createBooking,
   trackBookings,
   getMyBookings,
   updateBookingStatus,
   updateBookingComment,
+  submitBookingFeedback,
 };
 
 

@@ -6,6 +6,7 @@ const {
   getMyBookings,
   updateBookingStatus,
   updateBookingComment,
+  submitBookingFeedback,
 } = require("../controllers/servicesController");
 
 const router = express.Router();
@@ -30,6 +31,12 @@ router.put(
   authMiddleware,
   roleMiddleware(["admin"]),
   updateBookingComment
+);
+router.post(
+  "/booking/:id/feedback",
+  authMiddleware,
+  roleMiddleware(["user"]),
+  submitBookingFeedback
 );
 
 module.exports = router;

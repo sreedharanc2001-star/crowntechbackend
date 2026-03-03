@@ -35,6 +35,9 @@ const bookingSchema = new mongoose.Schema(
     adminComments: { type: String, trim: true, default: "" },
     comment: { type: String, trim: true, default: "" },
     completionMessage: { type: String, trim: true, default: "" },
+    feedbackRating: { type: Number, min: 1, max: 5, default: null },
+    feedbackComment: { type: String, trim: true, default: "" },
+    feedbackCreatedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
