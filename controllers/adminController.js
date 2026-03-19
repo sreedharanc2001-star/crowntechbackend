@@ -11,17 +11,28 @@ const updateStatus = async (req, res) => {
     return res.status(400).json({ message: "Status is required" });
   }
 
-  const normalized = status.toUpperCase().replace(" ", "_");
+  const normalized = status.toUpperCase().trim().replace(/[\s-]+/g, "_");
   const allowedStatus = ["PENDING", "APPROVED", "IN_PROGRESS", "COMPLETED", "REJECTED"];
 
   if (!allowedStatus.includes(normalized)) {
     return res.status(400).json({ message: "Invalid status value" });
   }
 
-  const update = { status: normalized };
+  const update = {
+    status: normalized,
+    completionMessage:
+      normalized === "COMPLETED"
+        ? "Your repair service is completed. Please collect your device."
+        : "",
+    feedbackRating: normalized === "COMPLETED" ? undefined : null,
+    feedbackComment: normalized === "COMPLETED" ? undefined : "",
+    feedbackCreatedAt: normalized === "COMPLETED" ? undefined : null,
+  };
+
   if (normalized === "COMPLETED") {
-    update.completionMessage =
-      "Your repair service is completed. Please collect your device.";
+    delete update.feedbackRating;
+    delete update.feedbackComment;
+    delete update.feedbackCreatedAt;
   }
 
   const booking = await Booking.findByIdAndUpdate(req.params.id, update, {
