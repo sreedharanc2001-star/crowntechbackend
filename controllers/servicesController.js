@@ -174,7 +174,16 @@ const updateBookingStatus = async (req, res) => {
       nextStatus === "COMPLETED"
         ? "Your repair service is completed. Please collect your device."
         : "",
+    feedbackRating: nextStatus === "COMPLETED" ? undefined : null,
+    feedbackComment: nextStatus === "COMPLETED" ? undefined : "",
+    feedbackCreatedAt: nextStatus === "COMPLETED" ? undefined : null,
   };
+
+  if (nextStatus === "COMPLETED") {
+    delete update.feedbackRating;
+    delete update.feedbackComment;
+    delete update.feedbackCreatedAt;
+  }
 
   const booking = await Booking.findByIdAndUpdate(req.params.id, update, {
     new: true,
@@ -249,6 +258,74 @@ const submitBookingFeedback = async (req, res) => {
   }
 };
 
+const rebookService = async (req, res) => {
+  try {
+    const { preferredDate, timeSlot } = req.body;
+    const normalizedDate = String(preferredDate || "").trim();
+    const normalizedSlot = String(timeSlot || "").trim();
+
+    if (!normalizedDate || !normalizedSlot) {
+      return res.status(400).json({ message: "Preferred date and time slot are required." });
+    }
+    if (!TIME_SLOTS.includes(normalizedSlot)) {
+      return res.status(400).json({ message: "Invalid time slot." });
+    }
+
+    const sourceBooking = await Booking.findById(req.params.id);
+    if (!sourceBooking) {
+      return res.status(404).json({ message: "Original booking not found." });
+    }
+    if (String(sourceBooking.userId) !== String(req.user.id)) {
+      return res.status(403).json({ message: "You can only rebook your own service." });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const booking = await Booking.create({
+      userId: req.user.id,
+      userName: user.name || sourceBooking.userName || "User",
+      userEmail: user.email || sourceBooking.userEmail,
+      userPhone: (user.phone || sourceBooking.userPhone || "").trim(),
+      serviceType: sourceBooking.serviceType,
+      deviceModel: sourceBooking.deviceModel,
+      issue: sourceBooking.issue,
+      issueCategory: sourceBooking.issueCategory || findKeywordCategory(sourceBooking.issue),
+      aiConfidence: null,
+      aiSource: "pending",
+      aiNotes: "AI categorization queued.",
+      preferredDate: normalizedDate,
+      timeSlot: normalizedSlot,
+      status: "PENDING",
+      adminComments: "",
+      comment: "",
+      completionMessage: "",
+      feedbackRating: null,
+      feedbackComment: "",
+      feedbackCreatedAt: null,
+    });
+
+    classifyBookingInBackground(booking._id, booking.issue);
+
+    return res.json({
+      message: "Service rebooked successfully.",
+      booking,
+    });
+  } catch (err) {
+    console.error("rebookService failed:", err?.message || err);
+    if (err.name === "ValidationError") {
+      const firstMessage = Object.values(err.errors || {})[0]?.message;
+      return res.status(400).json({ message: firstMessage || "Invalid rebooking payload." });
+    }
+    if (err.code === 11000) {
+      return res.status(409).json({ message: "Booking conflict detected. Please try again." });
+    }
+    return res.status(500).json({ message: "Unable to rebook service right now." });
+  }
+};
+
 module.exports = {
   createBooking,
   trackBookings,
@@ -256,6 +333,7 @@ module.exports = {
   updateBookingStatus,
   updateBookingComment,
   submitBookingFeedback,
+  rebookService,
 };
 
 

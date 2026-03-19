@@ -7,6 +7,7 @@ const {
   updateBookingStatus,
   updateBookingComment,
   submitBookingFeedback,
+  rebookService,
 } = require("../controllers/servicesController");
 
 const router = express.Router();
@@ -37,6 +38,12 @@ router.post(
   authMiddleware,
   roleMiddleware(["user"]),
   submitBookingFeedback
+);
+router.post(
+  "/booking/:id/rebook",
+  authMiddleware,
+  roleMiddleware(["user"]),
+  rebookService
 );
 
 module.exports = router;
