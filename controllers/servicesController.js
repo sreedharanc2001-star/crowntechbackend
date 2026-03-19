@@ -8,8 +8,8 @@ const AI_TIMEOUT_MS = 8000;
 
 const normalizeStatus = (status) => {
   if (!status) return "PENDING";
-  const upper = status.toUpperCase();
-  return upper.replace(" ", "_");
+  const upper = status.toUpperCase().trim();
+  return upper.replace(/[\s-]+/g, "_");
 };
 
 const withTimeout = async (promise, ms, fallbackValue) => {
@@ -136,6 +136,8 @@ const trackBookings = async (req, res) => {
   const phone = (req.query.phone || "").trim();
   const email = (req.query.email || "").trim().toLowerCase();
   const bookingId = (req.query.bookingId || "").trim().toUpperCase();
+  const rawLimit = Number(req.query.limit);
+  const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 25) : 10;
 
   if (!phone && !email && !bookingId) {
     return res.status(400).json({ message: "Phone, email, or booking ID is required." });
@@ -146,7 +148,7 @@ const trackBookings = async (req, res) => {
   if (email) query.userEmail = email;
   if (bookingId) query.bookingId = bookingId;
 
-  const bookings = await Booking.find(query).sort({ createdAt: -1 });
+  const bookings = await Booking.find(query).sort({ createdAt: -1 }).limit(limit);
   return res.json(bookings);
 };
 
@@ -166,11 +168,13 @@ const updateBookingStatus = async (req, res) => {
     return res.status(400).json({ message: "Invalid status value." });
   }
 
-  const update = { status: nextStatus };
-  if (nextStatus === "COMPLETED") {
-    update.completionMessage =
-      "Your repair service is completed. Please collect your device.";
-  }
+  const update = {
+    status: nextStatus,
+    completionMessage:
+      nextStatus === "COMPLETED"
+        ? "Your repair service is completed. Please collect your device."
+        : "",
+  };
 
   const booking = await Booking.findByIdAndUpdate(req.params.id, update, {
     new: true,
